@@ -1,0 +1,28 @@
+Artificial Intelligence (AI) is the field of computer science focused on creating systems that can perform tasks that typically require human intelligence.
+
+Common AI capabilities include:
+- Natural Language Processing (NLP)
+- Computer Vision
+- Speech Recognition
+- Recommendation Systems
+- Decision Making
+
+Machine Learning is a subset of AI that allows systems to learn patterns from data.
+
+Deep Learning is a subset of Machine Learning that uses neural networks with multiple layers.
+
+Popular AI frameworks include:
+- TensorFlow
+- PyTorch
+- Scikit-Learn
+
+AI applications include:
+- Chatbots
+- Autonomous vehicles
+- Fraud detection
+- Medical diagnosis
+- Cybersecurity threat detection
+
+Python is the most widely used programming language for AI development because of its extensive ecosystem of libraries and community support.
+
+Large Language Models (LLMs) are AI models trained on massive text datasets to generate and understand human language.

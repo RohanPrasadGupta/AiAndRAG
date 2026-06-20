@@ -1,0 +1,61 @@
+VirtualSOC Cybersecurity Playbook
+
+Incident Severity Levels:
+
+Critical:
+- Active ransomware attack
+- Domain compromise
+- Data exfiltration in progress
+
+High:
+- Malware infection
+- Privilege escalation
+- Credential theft
+
+Medium:
+- Suspicious PowerShell activity
+- Multiple failed logins
+- Unusual outbound connections
+
+Low:
+- Policy violations
+- Unauthorized software installation
+
+Incident Response Lifecycle:
+
+1. Identification
+Detect and verify security events.
+
+2. Containment
+Prevent further spread of threats.
+
+3. Eradication
+Remove malware and malicious artifacts.
+
+4. Recovery
+Restore systems to normal operations.
+
+5. Lessons Learned
+Document findings and improve defenses.
+
+Common MITRE ATT&CK Techniques:
+
+T1059:
+Command and Scripting Interpreter
+
+T1566:
+Phishing
+
+T1027:
+Obfuscated Files or Information
+
+T1078:
+Valid Accounts
+
+Indicators of Compromise (IOCs):
+- Malicious IP addresses
+- Malicious domains
+- File hashes
+- Suspicious URLs
+
+Security analysts should always validate alerts before escalating incidents.

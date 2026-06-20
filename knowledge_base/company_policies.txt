@@ -1,0 +1,39 @@
+TechNova Internal Company Policies
+
+Working Hours:
+Employees are expected to work between 9:00 AM and 6:00 PM local time.
+
+Remote Work:
+Employees may work remotely up to three days per week with manager approval.
+
+Password Policy:
+- Minimum length: 12 characters
+- Must contain uppercase letters
+- Must contain lowercase letters
+- Must contain numbers
+- Must contain special characters
+
+Multi-Factor Authentication:
+MFA is mandatory for all employees.
+
+Data Classification:
+
+Public:
+Information that can be shared externally.
+
+Internal:
+Information intended for employees only.
+
+Confidential:
+Sensitive business information.
+
+Restricted:
+Highly sensitive information requiring strict access controls.
+
+Leave Policy:
+Employees receive 20 days of annual leave per year.
+
+Security Policy:
+Employees must report suspected security incidents within one hour of discovery.
+
+Use of personal USB devices on company systems is prohibited.

@@ -1,0 +1,51 @@
+Machine Learning is a branch of Artificial Intelligence that enables computers to learn from data.
+
+Types of Machine Learning:
+
+Supervised Learning:
+Uses labeled data to train models.
+
+Examples:
+- Spam detection
+- House price prediction
+
+Algorithms:
+- Linear Regression
+- Logistic Regression
+- Random Forest
+- Support Vector Machine
+
+Unsupervised Learning:
+Uses unlabeled data.
+
+Examples:
+- Customer segmentation
+- Clustering
+
+Algorithms:
+- K-Means
+- DBSCAN
+
+Reinforcement Learning:
+Agents learn through rewards and penalties.
+
+Examples:
+- Robotics
+- Game-playing AI
+
+Important Concepts:
+
+Training Data:
+Data used to train models.
+
+Testing Data:
+Data used to evaluate models.
+
+Overfitting:
+When a model memorizes training data and performs poorly on new data.
+
+Underfitting:
+When a model fails to learn enough patterns.
+
+Feature Engineering:
+The process of selecting and transforming input variables.
