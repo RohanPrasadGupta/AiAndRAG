@@ -1,0 +1,31 @@
+Phase 1 — Vanilla RAG (Core Pipeline) Goal: Build the foundational RAG loop — load documents, chunk, embed, store, retrieve, generate.
+* Step 1 — LLM connection (hello_llm.py) — Ollama + LangChain talking to qwen3.5:4b
+* Step 2 — Prompt Templates + LCEL Chains (prompt_template.py) — PromptTemplate, pipe operator, chain.invoke()
+* Step 3 — Document Loading + Chunking (chunk_data.py) — RecursiveCharacterTextSplitter, chunk_size, chunk_overlap, Document objects
+* Step 4 — Embeddings (embeddings.py) — nomic-embed-text, 768-dimension vectors, embed_query()
+* Step 5 — Vector Store (embeddings.py) — ChromaDB, from_documents(), persist_directory, duplicate prevention with shutil
+* Step 6 — Retriever + Similarity Search (embeddings.py) — as_retriever(), similarity_search(), k parameter, semantic vs keyword search
+* Step 7 — Full RAG Chain (rag.py) — RunnablePassthrough, parallel dict pattern, format_docs(), hallucination prevention with "I don't know" instruction
+
+Phase 2 — Context Management + Production Quality Goal: Make the RAG pipeline production-ready — memory, structured outputs, and evaluation.
+* Step 1 — Conversational Memory (rag_with_memory.py) — chat_history slot in prompt, lambda key extraction from dict input, multi-turn Q&A, query reformulation problem identified
+* Step 2 — Contextual Query Compression — rewrite vague follow-up questions into standalone questions before hitting retriever (fixes "tell me more about it" retrieval weakness)
+* Step 3 — Chunk Size + Overlap Experimentation — test different chunk_size (256 / 512 / 1024) and chunk_overlap values, observe retrieval quality changes
+* Step 4 — Metadata Filtering — filter ChromaDB results by metadata fields (source, date, category) before returning to LLM
+* Step 5 — Structured Outputs (JSON) — force LLM to return valid JSON matching a defined schema, machine-readable outputs for downstream systems (mirrors VirtualSOC report structure)
+* Step 6 — Evaluation Framework — score RAG pipeline quality: are retrieved chunks actually relevant? is the answer grounded in context? measure hallucination rate
+
+Phase 3 — Graph RAG with Neo4j Goal: Combine vector retrieval (ChromaDB) with graph traversal (Neo4j) — mirrors your VirtualSOC architecture with local models instead of Bedrock.
+* Step 1 — Neo4j Setup (Docker) — spin up Neo4j Community Edition locally via Docker Compose
+* Step 2 — Graph Data Ingestion — load entities and relationships into Neo4j (e.g. AI concepts, skills, dependencies)
+* Step 3 — Cypher Query Integration — LLM decides whether to query ChromaDB (semantic) or Neo4j (relational/graph)
+* Step 4 — Hybrid Retrieval — combine vector search results + graph traversal results into one unified context block before prompt
+* Step 5 — Function / Tool Calling — LLM decides which tool to call (vector search, graph query, calculator, external API) based on the question
+* Step 6 — LangGraph Agents — stateful multi-step agent with memory, tool use, and decision loops using LangGraph
+* Step 7 — Multi-tool Agent — agent with 3+ tools, handles complex multi-hop questions requiring multiple retrieval steps
+
+Phase 4 — Chatbot UI Wrapper Goal: Wrap the full pipeline in a real conversational interface.
+* Step 1 — Streamlit UI — simple chat interface with message history displayed on screen
+* Step 2 — Chainlit UI — production-grade chat UI with streaming, message threading, and file upload support (same framework used in VirtualSOC)
+* Step 3 — Session Persistence — store chat history in PostgreSQL so conversations survive restarts (mirrors VirtualSOC postgresDB.py)
+* Step 4 — Multi-document Support — upload multiple files, each chunked and stored with source metadata, UI shows which document each answer came from
