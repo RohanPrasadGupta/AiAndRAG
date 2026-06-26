@@ -1,31 +1,848 @@
-Phase 1 — Vanilla RAG (Core Pipeline) Goal: Build the foundational RAG loop — load documents, chunk, embed, store, retrieve, generate.
-* Step 1 — LLM connection (hello_llm.py) — Ollama + LangChain talking to qwen3.5:4b
-* Step 2 — Prompt Templates + LCEL Chains (prompt_template.py) — PromptTemplate, pipe operator, chain.invoke()
-* Step 3 — Document Loading + Chunking (chunk_data.py) — RecursiveCharacterTextSplitter, chunk_size, chunk_overlap, Document objects
-* Step 4 — Embeddings (embeddings.py) — nomic-embed-text, 768-dimension vectors, embed_query()
-* Step 5 — Vector Store (embeddings.py) — ChromaDB, from_documents(), persist_directory, duplicate prevention with shutil
-* Step 6 — Retriever + Similarity Search (embeddings.py) — as_retriever(), similarity_search(), k parameter, semantic vs keyword search
-* Step 7 — Full RAG Chain (rag.py) — RunnablePassthrough, parallel dict pattern, format_docs(), hallucination prevention with "I don't know" instruction
+# Local RAG Learning Project — Complete Guide
 
-Phase 2 — Context Management + Production Quality Goal: Make the RAG pipeline production-ready — memory, structured outputs, and evaluation.
-* Step 1 — Conversational Memory (rag_with_memory.py) — chat_history slot in prompt, lambda key extraction from dict input, multi-turn Q&A, query reformulation problem identified
-* Step 2 — Contextual Query Compression — rewrite vague follow-up questions into standalone questions before hitting retriever (fixes "tell me more about it" retrieval weakness)
-* Step 3 — Chunk Size + Overlap Experimentation — test different chunk_size (256 / 512 / 1024) and chunk_overlap values, observe retrieval quality changes
-* Step 4 — Metadata Filtering — filter ChromaDB results by metadata fields (source, date, category) before returning to LLM
-* Step 5 — Structured Outputs (JSON) — force LLM to return valid JSON matching a defined schema, machine-readable outputs for downstream systems (mirrors VirtualSOC report structure)
-* Step 6 — Evaluation Framework — score RAG pipeline quality: are retrieved chunks actually relevant? is the answer grounded in context? measure hallucination rate
+**Author:** Rohan Prasad Gupta  
+**Stack:** Ollama · LangChain · ChromaDB · Neo4j · Python 3.11  
+**Goal:** Master RAG pipelines, Graph RAG, and Agentic AI from scratch — locally, free, and production-aligned  
+**Target Role:** AMD Junior AI Engineer (Agentic AI + LLM Integration)
 
-Phase 3 — Graph RAG with Neo4j Goal: Combine vector retrieval (ChromaDB) with graph traversal (Neo4j) — mirrors your VirtualSOC architecture with local models instead of Bedrock.
-* Step 1 — Neo4j Setup (Docker) — spin up Neo4j Community Edition locally via Docker Compose
-* Step 2 — Graph Data Ingestion — load entities and relationships into Neo4j (e.g. AI concepts, skills, dependencies)
-* Step 3 — Cypher Query Integration — LLM decides whether to query ChromaDB (semantic) or Neo4j (relational/graph)
-* Step 4 — Hybrid Retrieval — combine vector search results + graph traversal results into one unified context block before prompt
-* Step 5 — Function / Tool Calling — LLM decides which tool to call (vector search, graph query, calculator, external API) based on the question
-* Step 6 — LangGraph Agents — stateful multi-step agent with memory, tool use, and decision loops using LangGraph
-* Step 7 — Multi-tool Agent — agent with 3+ tools, handles complex multi-hop questions requiring multiple retrieval steps
+---
 
-Phase 4 — Chatbot UI Wrapper Goal: Wrap the full pipeline in a real conversational interface.
-* Step 1 — Streamlit UI — simple chat interface with message history displayed on screen
-* Step 2 — Chainlit UI — production-grade chat UI with streaming, message threading, and file upload support (same framework used in VirtualSOC)
-* Step 3 — Session Persistence — store chat history in PostgreSQL so conversations survive restarts (mirrors VirtualSOC postgresDB.py)
-* Step 4 — Multi-document Support — upload multiple files, each chunked and stored with source metadata, UI shows which document each answer came from
+## Models Used
+
+| Model | Size | Purpose | Cost |
+|---|---|---|---|
+| `nomic-embed-text` | 274MB | Embeddings only — converts text to 768-dim vectors | Free / Local |
+| `qwen3.5:4b` | 3.4GB | Main RAG chain, routing, answer generation | Free / Local |
+| `qwen2.5:1.5b` | ~1GB | Fast iteration during testing, LLM-as-judge evaluator | Free / Local |
+| `qwen2.5-coder:14b` | 9.0GB | Code generation only — too slow for RAG testing | Free / Local |
+| `claude-haiku-4-5-20251001` | API | Text-to-Cypher generation — small models hallucinate Cypher | ~$0.001/query |
+
+---
+
+## Infrastructure
+
+```
+Services running via Docker Compose:
+  Neo4j 5.18 + APOC plugin
+    - Browser UI:  http://localhost:7474
+    - Bolt port:   bolt://localhost:7687
+    - Credentials: neo4j / password123
+
+Services running natively (Mac, GPU via Metal):
+  Ollama — serves all local LLMs
+    - API:  http://localhost:11434
+    - GPU:  100% Apple Silicon Metal (M-series)
+```
+
+---
+
+## Key Concepts Learned
+
+### What is RAG?
+Retrieval-Augmented Generation — instead of relying on the LLM's training data alone, you retrieve relevant documents at query time and inject them into the prompt. This grounds the LLM's answer in real, up-to-date data and prevents hallucination.
+
+```
+Without RAG:  Question → LLM (training data only) → Answer (may hallucinate)
+With RAG:     Question → Retrieve relevant chunks → LLM (grounded) → Answer
+```
+
+### What is an Embedding?
+A way to convert text into a list of numbers (a vector). Semantically similar text produces numerically similar vectors. This enables semantic search — finding relevant chunks by meaning, not keyword matching.
+
+```
+"Python is the most popular AI language"  → [0.21, 0.83, 0.44, ...]
+"Which language should I learn for ML?"   → [0.23, 0.79, 0.41, ...]  ← similar numbers
+"I enjoy eating pasta for dinner"          → [0.91, 0.12, 0.73, ...]  ← very different
+```
+
+### What is LCEL (LangChain Expression Language)?
+The pipe operator `|` connects LangChain components so data flows left to right through each stage:
+```python
+chain = prompt_template | llm | output_parser
+result = chain.invoke({"question": "..."})
+```
+
+### What is a Vector Store?
+A database that stores embeddings alongside the original text. Given a query vector, it returns the top-k most similar stored vectors (and their original text). ChromaDB is used here.
+
+### What is a Graph Database?
+A database that stores data as nodes and relationships. Unlike vector search (finds similar text), graph traversal finds exact relationships between entities.
+```
+Vector: "What is Python?" → finds Python definition paragraph
+Graph:  "What connects Python to AI?" → traverses relationships:
+        Python -[USED_FOR]-> AI
+        Python -[REQUIRED_FOR]-> Deep Learning -[ADVANCED_AREA_OF]-> AI
+```
+
+---
+
+## Phase 1 — Vanilla RAG (Core Pipeline)
+
+**Goal:** Build the foundational RAG loop — load documents, chunk, embed, store, retrieve, generate.
+
+### Step 1 — LLM Connection (`hello_llm.py`)
+Connected Ollama to LangChain using `OllamaLLM`. Confirmed `qwen3.5:4b` responds to prompts.
+
+**Key concept:** Ollama runs as a local server at `http://localhost:11434`. LangChain's `OllamaLLM` sends HTTP requests to it — same pattern as calling any API, just local.
+
+```python
+from langchain_ollama import OllamaLLM
+llm = OllamaLLM(model="qwen3.5:4b")
+result = llm.invoke("Hello, who are you?")
+```
+
+### Step 2 — Prompt Templates + LCEL Chains (`prompt_template.py`)
+Built reusable prompt templates with placeholders and chained them to the LLM using `|`.
+
+**Key concept — PromptTemplate vs f-string:**
+- f-string: evaluated immediately, just a string
+- PromptTemplate: an object LangChain understands, can be piped, validated, reused
+
+**Key concept — RunnablePassthrough:**
+Passes input unchanged to the next stage. Used to split one input into two parallel paths.
+
+```python
+chain = (
+    {
+        "context": retriever | format_docs,   # question → search → text
+        "question": RunnablePassthrough()      # question → passes through unchanged
+    }
+    | prompt    # receives {"context": "...", "question": "..."}
+    | llm
+)
+```
+
+### Step 3 — Document Loading + Chunking (`chunk_data.py`)
+Loaded `documents.txt` and split it into chunks using `RecursiveCharacterTextSplitter`.
+
+**Key concept — why chunk?**
+- LLMs have context window limits — can't fit entire documents
+- Smaller focused chunks = better retrieval accuracy
+- `RecursiveCharacterTextSplitter` splits on `\n\n` first (paragraphs), then `\n`, then spaces — always tries the most natural boundary first
+
+**Key concept — chunk_size vs chunk_overlap:**
+```
+chunk_size=500   → max characters per chunk
+chunk_overlap=50 → last 50 chars of chunk N repeated at start of chunk N+1
+                   prevents sentences from losing context at boundaries
+```
+
+**Experimentation results:**
+```
+chunk_size=250 → 22 chunks → cuts sentences mid-way ❌
+chunk_size=500 → 12 chunks → paragraph-aligned, clean boundaries ✅
+chunk_size=1000→  5 chunks → multiple topics per chunk, LLM loses focus ⚠️
+```
+**Rule:** chunk_size should match your document's natural unit (paragraph, section, function).
+
+### Step 4 — Embeddings (`embeddings.py`)
+Converted text chunks into 768-dimensional vectors using `nomic-embed-text`.
+
+**Key concept — embedding dimension:**
+`nomic-embed-text` always produces exactly 768 numbers per text input, regardless of length. Every chunk — whether 10 words or 500 characters — becomes a list of exactly 768 floats.
+
+**Key concept — why same model for query and chunks:**
+Each embedding model has its own unique "language" for mapping meaning to numbers. If you embed chunks with Model A and queries with Model B, the vectors are incompatible — like comparing GPS coordinates from two different mapping systems.
+
+```python
+embedding_model = OllamaEmbeddings(model="nomic-embed-text:latest")
+vector = embedding_model.embed_query("What is AI?")
+# → [-0.003, 0.099, -0.116, ...] (768 numbers)
+```
+
+### Step 5 — Vector Store (`embeddings.py`)
+Stored all 768-dim vectors + original text + metadata in ChromaDB with disk persistence.
+
+**Key concept — persist_directory:**
+Without it, ChromaDB lives in memory and disappears when the script ends. With `persist_directory="./chroma_db"`, vectors are saved to disk and survive restarts — no need to re-embed every run.
+
+**Key bug discovered — duplicate vectors:**
+Running `Chroma.from_documents()` multiple times appends instead of replacing. Fix: delete and recreate the database before re-ingesting:
+```python
+import shutil, os
+if os.path.exists("./chroma_db"):
+    shutil.rmtree("./chroma_db")
+```
+
+### Step 6 — Retriever + Similarity Search (`embeddings.py`)
+Searched ChromaDB semantically — query is embedded, then compared to all stored vectors using cosine similarity. Top-k most similar chunks returned.
+
+**Key concept — semantic vs keyword search:**
+Semantic search finds meaning, not exact words. "What language is used for AI?" correctly returns the Python paragraph even though neither "Python" nor "programming" appears in the query.
+
+```python
+retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+# k=3 means "return UP TO 3 most similar chunks" — not always exactly 3
+```
+
+**Metadata filtering:**
+```python
+results = vectorstore.similarity_search(
+    query, k=2,
+    filter={"category": "programming"}  # only search chunks in this category
+)
+```
+Lesson: too-narrow filters return irrelevant results. Filter by category only when you know which category the answer lives in.
+
+### Step 7 — Full RAG Chain (`rag.py`)
+Connected all pieces into one complete pipeline using LCEL pipe operator.
+
+**Key concept — hallucination prevention:**
+The prompt instruction "Answer using ONLY the context below. If not in context, say I don't know" is what stops the LLM from answering from training data. Tested with "What is the capital of France?" — correctly returned "I don't know based on the provided context" even though the LLM knows the answer.
+
+```python
+chain = (
+    {
+        "context": retriever | format_docs,
+        "question": RunnablePassthrough()
+    }
+    | prompt
+    | llm
+)
+```
+
+**Data flow:**
+```
+chain.invoke("What programming language is used for AI?")
+  → retriever embeds query, searches ChromaDB, returns 3 chunks
+  → format_docs joins chunks with "\n\n"
+  → prompt fills {context} and {question} placeholders
+  → llm generates grounded answer
+  → "Python is the most widely used programming language in AI"
+```
+
+---
+
+## Phase 2 — Context Management + Production Quality
+
+**Goal:** Make the RAG pipeline production-ready — memory, structured outputs, and evaluation.
+
+### Step 1 — Conversational Memory (`rag_with_memory.py`)
+Added chat history to the prompt so the LLM remembers previous turns.
+
+**Key concept — why memory matters:**
+```
+Turn 1: "What programming language is used for AI?" → "Python"
+Turn 2: "Can you tell me more about it?"
+         ↑ "it" has no meaning without Turn 1 context
+```
+Without memory, Turn 2's "it" embeds as a meaningless vector — retrieval fails.
+
+**Key concept — HumanMessage and AIMessage:**
+LangChain uses typed message objects, not plain strings. This tells the LLM which role said what:
+```python
+from langchain_core.messages import HumanMessage, AIMessage
+chat_history = [
+    HumanMessage(content="What language for AI?"),
+    AIMessage(content="Python is most widely used...")
+]
+```
+
+**Prompt structure for memory (Option A — correct):**
+```
+System instruction    ← who am I?
+{chat_history}        ← what have we discussed?
+Context: {context}    ← what new info is relevant?
+Question: {question}  ← what is being asked now?
+Answer:
+```
+
+**Lambda key extraction pattern:**
+When invoking with a dict input, lambdas extract the right value for each chain stage:
+```python
+chain = (
+    {
+        "context": (lambda x: x["question"]) | retriever | format_docs,
+        "question": lambda x: x["question"],
+        "chat_history": lambda x: x["chat_history"]
+    }
+    | prompt | llm
+)
+```
+
+### Step 2 — Contextual Query Compression (`rag_compression.py`)
+Added a pre-retrieval step that rewrites vague follow-up questions into standalone questions before embedding and searching.
+
+**Key concept — the query reformulation problem:**
+"Can you tell me more about it?" embeds into a weak, unfocused vector. "it" has no semantic meaning. ChromaDB returns mediocre chunks. Compression fixes this:
+
+```
+Before compression:
+  "Can you tell me more about it?" → weak embedding → bad retrieval
+
+After compression:
+  LLM rewrites → "What are more details about Python for AI?" 
+  → strong embedding → good retrieval
+```
+
+**Implementation using `langchain_classic`:**
+```python
+from langchain_classic.chains import (
+    create_history_aware_retriever,
+    create_retrieval_chain,
+)
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+```
+Note: `langchain.chains` was removed in LangChain 1.x. Use `langchain_classic` instead.
+
+**Two prompt templates required:**
+1. Compression prompt — rewrites question using chat history
+2. Answer prompt — generates final answer using retrieved context
+
+**Key concept — MessagesPlaceholder:**
+Expands a list of `HumanMessage`/`AIMessage` objects into properly formatted chat turns. Essential when using `ChatPromptTemplate` with history.
+
+### Step 3 — Chunk Size + Overlap Experimentation
+Ran the same document through three different chunk sizes and compared outputs.
+
+**Results:**
+```
+250 chars → 22 chunks → sentences cut mid-way, embeddings confused
+500 chars → 12 chunks → paragraph-aligned, one idea per chunk ✅
+1000 chars→  5 chunks → multiple topics merged, retrieval noisy
+```
+
+**The rule of thumb:**
+```
+Short paragraphs (news, docs)  → chunk_size 300–500
+Academic papers                → chunk_size 500–800
+Legal documents                → chunk_size 800–1200
+Code files                     → chunk_size 200–400 (per function)
+```
+
+**Key insight — overlap fires rarely with good chunk_size:**
+If `chunk_size` aligns with natural paragraph boundaries, `RecursiveCharacterTextSplitter` splits on `\n\n` before hitting the character limit. Overlap only kicks in when no natural boundary exists within the window.
+
+### Step 4 — Metadata Filtering
+Tagged each chunk with a `category` metadata field during ingestion and filtered retrieval by category.
+
+**Categorisation approach (keyword-based):**
+```python
+for chunk in chunks:
+    content = chunk.page_content.lower()
+    if "deep learning" in content or "neural" in content:
+        chunk.metadata["category"] = "ml"
+    elif "python" in content or "programming" in content:
+        chunk.metadata["category"] = "programming"
+    ...
+```
+
+**Limitation discovered:** Keyword-based categorisation is fragile. The Mathematics paragraph matched "ml" because it mentioned "machine learning models" at the end. In Phase 3, the LLM categorises chunks instead — more reliable.
+
+**Filtering syntax:**
+```python
+results = vectorstore.similarity_search(
+    query, k=2,
+    filter={"category": "programming"}
+)
+```
+
+**Key lesson:** Too-narrow filters return irrelevant results. If only 1 chunk matches the filter, `k=2` still returns only 1 result — ChromaDB cannot return more results than exist matching the filter.
+
+### Step 5 — Structured Outputs (JSON) (`rag-json-format.py`)
+Forced the LLM to return valid JSON matching a defined Pydantic schema instead of free-form text.
+
+**Key concept — why structured output?**
+Plain text answers are for humans. Structured JSON is for machines — downstream systems (SIEM, SOAR, dashboards) can parse and act on it. This mirrors VirtualSOC's investigation report structure.
+
+**Pydantic schema:**
+```python
+from pydantic import BaseModel, Field
+from typing import Literal
+
+class RAGResponse(BaseModel):
+    answer: str = Field(description="Answer to the question")
+    confidence: Literal["high", "medium", "low"]
+    category: str
+    sources_used: list[str]
+```
+
+**Local model approach (prompt-engineering):**
+`.with_structured_output()` only works with frontier models (Claude, GPT-4). For local models, prompt the LLM to return JSON and parse manually:
+```python
+# In the prompt:
+"You MUST respond with ONLY a valid JSON object. No markdown. No code fences."
+
+# Parse the output:
+import json
+data = json.loads(raw_response)
+structured = RAGResponse(**data)
+```
+
+**Defensive parsing with fallback:**
+```python
+def parse_response(raw: str) -> RAGResponse:
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        # strip markdown fences if model wraps output anyway
+        cleaned = cleaned.split("```")[1]
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:]
+    return RAGResponse(**json.loads(cleaned.strip()))
+```
+
+**Key lesson — model size affects instruction following:**
+`qwen2.5:1.5b` (smaller) sometimes ignores "ONLY context" instruction and answers from training data. `qwen3.5:4b` follows it reliably. Model size directly affects prompt constraint adherence.
+
+### Step 6 — Evaluation Framework (`rag_evaluation.py`)
+Built an automated LLM-as-judge system to score RAG pipeline quality at scale.
+
+**Key concept — why evaluation matters:**
+Manual review of 2 questions = 2 minutes. Manual review of 500 questions = impossible. You need automated scoring.
+
+**Three metrics:**
+```
+Correctness:         Does the answer match the ground truth?
+Groundedness:        Is the answer supported by retrieved context (not hallucinated)?
+Retrieval Relevance: Did we retrieve actually useful chunks?
+```
+
+**LLM-as-judge pattern:**
+Use a second (smaller, cheaper) LLM purely to score the first LLM's output:
+```python
+evaluater_llm = OllamaLLM(model="qwen2.5:1.5b")  # fast, cheap judge
+answer_llm = OllamaLLM(model="qwen3.5:4b")         # main pipeline model
+```
+
+**Test dataset structure:**
+```python
+test_dataset = [
+    {
+        "question": "What programming language is used for AI?",
+        "ground_truth": "Python is the most widely used programming language..."
+    },
+    ...
+]
+```
+
+**Result achieved:**
+```
+Correctness:         4.0/5
+Groundedness:        4.2/5  
+Retrieval Relevance: 4.2/5
+Overall RAG Score:   82.7%
+```
+
+**Key lesson — small judge model inconsistency:**
+`qwen2.5:1.5b` scored Q3 (Mathematics) as 0/5 correctness even though the answer was correct — it applied a different standard inconsistently. In production, use Claude or GPT-4 as the judge for reliable scoring.
+
+---
+
+## Phase 3 — Graph RAG with Neo4j
+
+**Goal:** Combine vector retrieval (ChromaDB) with graph traversal (Neo4j).
+
+### Step 1 — Neo4j Setup (Docker)
+Ran Neo4j 5.18 + APOC plugin via Docker Compose.
+
+**docker-compose.yml:**
+```yaml
+services:
+  neo4j:
+    image: neo4j:5.18
+    ports:
+      - "7474:7474"   # Browser UI
+      - "7687:7687"   # Bolt protocol (application connections)
+    volumes:
+      - ./neo4j_data:/data   # persist data across container restarts
+    environment:
+      - NEO4J_AUTH=neo4j/password123
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+```
+
+**Key concept — port 7474 vs 7687:**
+- 7474 = HTTP browser UI — for humans, point-and-click
+- 7687 = Bolt protocol — for applications, binary, fast, what Python code connects to
+
+**Key concept — volumes and container statefulness:**
+Docker containers are stateless by default — data disappears when stopped. Volume mount `./neo4j_data:/data` saves graph data to your Mac's disk, surviving restarts.
+
+**Commands:**
+```bash
+docker compose up -d     # start in background
+docker compose down      # stop
+docker compose ps        # check status
+```
+
+### Step 2 — Graph Data Ingestion (`graph_ingest.py`)
+Created nodes and relationships in Neo4j using Cypher queries via Python.
+
+**Data model:**
+```
+Nodes:
+  Topic:       Artificial Intelligence, Computer Science, 
+               Machine Learning, Deep Learning
+  Skill:       Python, Mathematics, Data Analysis, 
+               Programming, Cloud Computing
+  Performance: AI Model Performance
+
+Relationships:
+  (AI) -[:IS_BRANCH_OF]-> (Computer Science)
+  (AI) -[:REQUIRES_SKILL]-> (Programming)
+  (Python) -[:USED_FOR]-> (AI)
+  (ML) -[:CORE_COMPONENT_OF]-> (AI)
+  (Data Analysis) -[:IMPROVES]-> (AI Model Performance)
+  (Mathematics) -[:REQUIRED_FOR]-> (ML)
+  (Deep Learning) -[:ADVANCED_AREA_OF]-> (AI)
+  (Python) -[:REQUIRED_FOR]-> (Deep Learning)
+  (Deep Learning) -[:EXTENDS]-> (ML)
+  (Cloud Computing) -[:SUPPORTS]-> (AI)
+```
+
+**Key Cypher concepts:**
+```cypher
+-- MERGE = create if not exists (safe to run multiple times)
+MERGE (t:Topic {name: $name})
+
+-- CREATE = always creates (causes duplicates if run twice)
+-- Use MERGE, not CREATE for ingestion
+
+-- Relationship creation
+MATCH (a {name: $from}), (b {name: $to})
+MERGE (a)-[:RELATIONSHIP_TYPE]->(b)
+```
+
+**Cypher syntax rule:** Property maps use `:` not `=`
+```cypher
+MERGE (n:Topic {name: "AI"})    ✅ correct
+MERGE (n:Topic {name = "AI"})   ❌ wrong — causes SyntaxError
+```
+
+**Python driver:**
+```python
+from neo4j import GraphDatabase
+driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "password123"))
+with driver.session() as session:
+    session.run("MERGE (t:Topic {name: $name})", name="Artificial Intelligence")
+```
+
+### Step 3 — Cypher Query Integration (`graph_query.py`)
+Connected LangChain to Neo4j and ran Cypher queries returning Python dicts.
+
+**LangChain Neo4j connection:**
+```python
+from langchain_neo4j import Neo4jGraph
+graph = Neo4jGraph(url="bolt://localhost:7687", username="neo4j", password="password123")
+results = graph.query("MATCH (n)-[r]->(m) RETURN n.name, type(r), m.name")
+# returns list of dicts
+```
+
+**Multi-hop path query (the graph's superpower):**
+```cypher
+MATCH path = (start {name: "Mathematics"})-[*]->(target {name: "Artificial Intelligence"})
+RETURN [node IN nodes(path) | node.name] AS path_nodes,
+       [rel IN relationships(path) | type(rel)] AS relationships,
+       length(path) AS hops
+```
+
+**Result:**
+```
+Mathematics -[REQUIRED_FOR]-> Machine Learning -[CORE_COMPONENT_OF]-> AI
+Length: 2 hops
+```
+This multi-hop traversal is impossible with vector search — it requires knowing the explicit relationship structure.
+
+### Step 4 — Hybrid Retrieval (`hybrid_retrieval.py`)
+Built a single pipeline that routes questions to either ChromaDB or Neo4j based on question type.
+
+**The routing decision:**
+```
+"Explain what Machine Learning is"  → vector (needs explanation/definition)
+"What skills needed for Deep Learning?" → graph (needs relationship traversal)
+```
+
+**Routing logic:**
+```python
+def route_question(question: str) -> str:
+    q = question.lower()
+    if "what is" in q or "explain" in q or "describe" in q:
+        return "vector"
+    elif "skills" in q or "required" in q or "connect" in q or "path" in q:
+        return "graph"
+    else:
+        return "vector"  # default to vector
+```
+
+**Graph search with relationship direction:**
+```cypher
+-- "What skills do I need BEFORE Deep Learning?"
+-- = find what points INTO Deep Learning node
+
+MATCH (skill)-[:REQUIRED_FOR*1..3]->(target {name: $topic_name})
+RETURN skill.name AS required_skill
+```
+Direction matters: `(skill)-[:REQUIRED_FOR]->(DL)` means skill is required FOR DL. Reversing the arrow would find what DL is required for, not its prerequisites.
+
+**Result:**
+```
+Q: "Explain what Machine Learning is" → vector → 3 rich text chunks
+Q: "What skills needed for Deep Learning?" → graph → "Python is required for Deep Learning"
+```
+
+### Step 5 — Function / Tool Calling (`tool_calling.py`)
+Replaced keyword router with LLM-based routing and Claude-powered Text-to-Cypher generation.
+
+**LLM router:**
+```python
+router_prompt = ChatPromptTemplate.from_messages([
+    ("system", """Return ONLY one word: vector or graph
+    vector = explanations, definitions
+    graph  = relationships, prerequisites, connections"""),
+    ("human", "{question}")
+])
+question_route_chain = router_prompt | answer_llm | StrOutputParser()
+```
+
+**Text-to-Cypher with Claude:**
+Small models (4B parameters) hallucinate Cypher syntax and ignore formatting instructions. Claude (frontier model) generates valid, executable Cypher reliably:
+
+```python
+def generate_cypher(question: str) -> str:
+    prompt = f"""Write a Cypher query for this question.
+Return ONLY the query. No markdown. No explanation.
+
+Schema: {GRAPH_SCHEMA}
+Question: {question}"""
+    
+    message = claude_client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=256,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return message.content[0].text.strip()
+```
+
+**Graph schema for LLM:**
+The LLM needs to know what nodes and relationships exist to write valid Cypher:
+```
+Without schema → LLM guesses labels/relationships → query fails
+With schema    → LLM uses correct labels and types → query works
+```
+
+**Three-model pipeline:**
+```
+qwen3.5:4b (router)  →  decides: vector or graph
+         ↓                         ↓
+    ChromaDB search        Claude Haiku (Cypher writer)
+    (local, free)                  ↓
+         ↓                   Neo4j graph query
+         └──── context ────────────┘
+                    ↓
+          qwen3.5:4b (answer generation)
+                    ↓
+            natural language answer
+```
+
+**Result — all 4 question formats handled correctly:**
+```
+"Explain what Machine Learning is"              → vector → definition ✅
+"What skills do I need before learning DL?"     → graph → Python ✅  
+"Can you tell me prerequisites for ML?"         → graph → Mathematics ✅
+"What connects Python to Artificial Intelligence?" → graph → multi-path ✅
+```
+
+---
+
+## Phase 3 — Remaining Steps (To Complete)
+
+### Step 6 — LangGraph Agents
+Replace the linear pipeline with a stateful agent that can loop, retry, and chain multiple tool calls.
+
+**Current pipeline (linear):**
+```
+question → route → retrieve → answer → done
+```
+
+**LangGraph agent (stateful loop):**
+```
+question → decide action → call tool → observe result
+    ↑                                        ↓
+    └────────── decide next action ──────────┘
+                      ↓
+               done when confident
+```
+
+**Key difference:** If graph search returns empty, the agent can automatically fall back to vector search. The linear pipeline just returns "no results."
+
+**Core LangGraph concepts:**
+```python
+from langgraph.graph import StateGraph, END
+
+# State = what the agent remembers between steps
+class AgentState(TypedDict):
+    question: str
+    route: str
+    context: str
+    answer: str
+    steps_taken: int
+
+# Graph = defines what happens at each node and which edge to follow next
+graph = StateGraph(AgentState)
+graph.add_node("router", route_node)
+graph.add_node("vector_search", vector_node)
+graph.add_node("graph_search", graph_node)
+graph.add_node("answer", answer_node)
+graph.add_conditional_edges("router", decide_search_type)
+```
+
+### Step 7 — Multi-tool Agent
+Agent with 3+ tools that handles complex questions requiring multiple retrieval steps.
+
+**Tools planned:**
+```
+Tool 1: vector_search   — semantic search in ChromaDB
+Tool 2: graph_search    — relationship traversal in Neo4j
+Tool 3: hybrid_search   — combines both automatically
+```
+
+**Example multi-hop question:**
+"What is Machine Learning and what skills do I need to learn it?"
+- Part 1 → vector search (definition)
+- Part 2 → graph search (prerequisites)
+- Agent combines both answers
+
+---
+
+## Phase 4 — Chatbot UI Wrapper (To Complete)
+
+### Step 1 — Streamlit UI
+Simple chat interface with message history displayed on screen.
+```bash
+pip install streamlit
+streamlit run app.py
+```
+
+### Step 2 — Chainlit UI
+Production-grade chat UI with streaming, message threading, and file upload.
+```bash
+pip install chainlit
+chainlit run app.py
+```
+Same framework used in VirtualSOC-LLM project.
+
+### Step 3 — Session Persistence (PostgreSQL)
+Store chat history in PostgreSQL so conversations survive application restarts.
+
+Add to docker-compose.yml:
+```yaml
+postgres:
+  image: postgres:15
+  environment:
+    POSTGRES_DB: rag_chat
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: password
+  ports:
+    - "5432:5432"
+  volumes:
+    - ./postgres_data:/var/lib/postgresql/data
+```
+
+### Step 4 — Multi-document Support
+Upload multiple files, each stored with source metadata. UI shows which document each answer came from.
+
+---
+
+## File Structure
+
+```
+AiAndRAG/
+├── docker-compose.yml          # Neo4j + PostgreSQL services
+├── documents.txt               # knowledge base (AI and skills)
+├── chroma_db/                  # persisted vector store
+├── neo4j_data/                 # persisted graph database
+├── venv/                       # Python virtual environment
+│
+├── hello_llm.py                # Phase 1 Step 1
+├── prompt_template.py          # Phase 1 Step 2
+├── chunk_data.py               # Phase 1 Step 3
+├── embeddings.py               # Phase 1 Steps 4-6
+├── rag.py                      # Phase 1 Step 7
+│
+├── phase2/
+│   ├── rag_with_memory.py      # Phase 2 Step 1
+│   ├── rag_compression.py      # Phase 2 Step 2
+│   ├── rag-json-format(5).py   # Phase 2 Step 5
+│   └── rag_evaluation(6).py    # Phase 2 Step 6
+│
+└── phase3/
+    ├── graph_ingest.py         # Phase 3 Step 2
+    ├── graph_query.py          # Phase 3 Step 3
+    ├── hybrid_retrieval.py     # Phase 3 Step 4
+    └── tool_calling(4).py      # Phase 3 Step 5
+```
+
+---
+
+## Commands Reference
+
+```bash
+# Environment
+source venv/bin/activate        # activate Python venv (run every new terminal)
+pip list | grep langchain       # check installed LangChain packages
+
+# Ollama
+ollama list                     # show downloaded models
+ollama ps                       # show running models + GPU usage
+ollama pull nomic-embed-text    # download embedding model
+ollama pull qwen3.5:4b          # download main LLM
+
+# Docker
+docker compose up -d            # start Neo4j in background
+docker compose down             # stop all services
+docker compose ps               # check service status
+
+# Database reset
+rm -rf ./chroma_db              # clear vector store (re-run embeddings.py after)
+```
+
+---
+
+## Key Lessons Learned
+
+**LangChain ecosystem (2026):**
+- `langchain-community` archived May 2026 — use standalone packages instead
+- Correct imports: `langchain_core`, `langchain_ollama`, `langchain_chroma`, `langchain_neo4j`, `langchain_classic`
+- `langchain.chains` removed in 1.x — use `langchain_classic.chains` for helper functions
+
+**Small models vs frontier models:**
+- 4B models: good at explanation, bad at structured output, unreliable at Text-to-Cypher
+- Use local models for: routing, answering, evaluation (with caveats)
+- Use Claude/API for: Text-to-Cypher, structured output with `.with_structured_output()`
+
+**Cypher syntax rules:**
+- Property maps use `:` not `=` → `{name: $value}` not `{name = $value}`
+- Use `MERGE` not `CREATE` for idempotent ingestion
+- Relationship direction matters → `(a)-[:REL]->(b)` traverses differently than `(a)<-[:REL]-(b)`
+
+**RAG evaluation baseline achieved: 82.7%**
+- Correctness: 4.0/5
+- Groundedness: 4.2/5
+- Retrieval Relevance: 4.2/5
+- Q3 (Mathematics) scored 0 due to small judge model inconsistency
+
+---
+
+## Packages Installed
+
+```
+langchain==1.3.9
+langchain-core==1.4.7
+langchain-ollama==1.1.0
+langchain-chroma==1.1.0
+langchain-neo4j==latest
+langchain-classic==1.0.8
+langchain-text-splitters==1.1.2
+langchain-anthropic==latest
+neo4j==latest
+chromadb==latest
+pydantic==2.x
+anthropic==latest
+python-dotenv==latest
+```
+
+---
+
+*Last updated: Phase 3 Step 5 complete. Next: Phase 3 Step 6 — LangGraph Agents*

@@ -1,0 +1,7 @@
+(Artificial Intelligence) ──[IS_BRANCH_OF]──→ (Computer Science)
+(Artificial Intelligence) ──[REQUIRES_SKILL]──→ (Programming)
+(Python) ──[USED_FOR]──→ (Artificial Intelligence)
+(Machine Learning) ──[CORE_COMPONENT_OF]──→ (Artificial Intelligence)
+(Data Analysis) ──[IMPROVES]──→ (AI Model Performance)
+(Mathematics) ──[REQUIRED_FOR]──→ (Machine Learning)
+(Deep Learning) ──[ADVANCED_AREA_OF]──→ (Artificial Intelligence)

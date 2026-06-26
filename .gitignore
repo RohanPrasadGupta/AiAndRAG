@@ -10,6 +10,8 @@ __pycache__/
 
 # Environment variables and secrets
 .env
+.chainlit
+neo4j_data
 
 # Personal files
 Rohan-Prasad-Gupta.pdf
