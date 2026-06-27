@@ -228,27 +228,42 @@ builder.add_edge("answer",END)
 
 agent = builder.compile()
 
-questions = ["What is Artificial Intelligence? and What skills do I need for ML?",
-            "Explain what Machine Learning is?"]
+# questions = ["What is Artificial Intelligence? and What skills do I need for ML?",
+#             "Explain what Machine Learning is?"]
 # questions = ["What is Artificial Intelligence? and What skills do I need for ML?"]
 
-for question in questions:
-    initial_state = {
-        "question": question,
-        "sub_questions": [],
-        "vector_context": "",
-        "graph_context": "",
-        "combined_context": "",
-        "answer": "",
-        "tools_tried": []
-    }
+# for question in questions:
+#     initial_state = {
+#         "question": question,
+#         "sub_questions": [],
+#         "vector_context": "",
+#         "graph_context": "",
+#         "combined_context": "",
+#         "answer": "",
+#         "tools_tried": []
+#     }
 
-    final_result = agent.invoke(initial_state)
+#     final_result = agent.invoke(initial_state)
     
-    print("\n======================")
-    print("Q:", final_result["question"])
-    print("Sub-questions:", final_result["sub_questions"])
-    print("Tools tried:", final_result["tools_tried"])
-    print("Answer:", final_result["answer"])
+#     print("\n======================")
+#     print("Q:", final_result["question"])
+#     print("Sub-questions:", final_result["sub_questions"])
+#     print("Tools tried:", final_result["tools_tried"])
+#     print("Answer:", final_result["answer"])
 
 
+# CORRECT ✅ — only runs when executed directly
+if __name__ == "__main__":
+    questions = ["What is AI? and What skills for ML?"]
+    for question in questions:
+        initial_state = {
+            "question": question,
+            "sub_questions": [],
+            "vector_context": "",
+            "graph_context": "",
+            "combined_context": "",
+            "answer": "",
+            "tools_tried": []
+        }
+        final_result = agent.invoke(initial_state)
+        print("final result:", final_result["answer"])
